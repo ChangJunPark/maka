@@ -64,6 +64,14 @@ const markdownExtensions = [
 ];
 
 const RECENT_LOCAL_EDIT_CONFLICT_WINDOW_MS = 15_000;
+const LAST_WORKSPACE_KEY = "maka:lastWorkspace";
+const LAYOUT_MODE_KEY = "maka:layoutMode";
+
+type LayoutMode = "split" | "editor" | "preview";
+
+function isLayoutMode(value: string | null): value is LayoutMode {
+  return value === "split" || value === "editor" || value === "preview";
+}
 
 mermaid.initialize({
   startOnLoad: false,
@@ -81,8 +89,15 @@ export default function App() {
   const [lastWrittenHash, setLastWrittenHash] = useState<string | null>(null);
   const [message, setMessage] = useState("로컬 폴더를 열어 Markdown 작업을 시작하세요.");
   const [openingWorkspace, setOpeningWorkspace] = useState(false);
+  const [restoringWorkspace, setRestoringWorkspace] = useState(false);
+  const [layoutMode, setLayoutModeState] = useState<LayoutMode>(() => {
+    if (typeof window === "undefined") return "split";
+    const saved = window.localStorage.getItem(LAYOUT_MODE_KEY);
+    return isLayoutMode(saved) ? saved : "split";
+  });
   const saveTimer = useRef<number | null>(null);
   const lastLocalEditAt = useRef<number | null>(null);
+  const restoreAttempted = useRef(false);
 
   const markdownFiles = useMemo(
     () => workspace?.files.filter((entry) => !entry.is_dir) ?? [],
@@ -93,6 +108,38 @@ export default function App() {
     const files = await invoke<FileEntry[]>("list_files");
     setWorkspace((current) => (current ? { ...current, files } : current));
   }, []);
+
+  const setLayoutMode = useCallback((next: LayoutMode) => {
+    setLayoutModeState(next);
+    window.localStorage.setItem(LAYOUT_MODE_KEY, next);
+  }, []);
+
+  const resetOpenFileState = useCallback(() => {
+    setActiveFile(null);
+    setContent("");
+    setConflict(null);
+    setStatus("idle");
+    setLastSavedHash(null);
+    setLastWrittenHash(null);
+    lastLocalEditAt.current = null;
+  }, []);
+
+  const loadWorkspacePath = useCallback(
+    async (rootPath: string, options: { persist: boolean; restored?: boolean }) => {
+      const next = await invoke<WorkspaceInfo>("set_workspace", {
+        rootPath,
+      });
+      await invoke("start_watch");
+      setWorkspace(next);
+      resetOpenFileState();
+      if (options.persist) {
+        window.localStorage.setItem(LAST_WORKSPACE_KEY, next.root);
+      }
+      setMessage(options.restored ? `마지막 workspace 복원됨: ${next.root}` : `${next.root} 열림`);
+      return next;
+    },
+    [resetOpenFileState],
+  );
 
   const readActiveFile = useCallback(
     async (relativePath: string) => {
@@ -124,25 +171,13 @@ export default function App() {
         setMessage("폴더 열기를 취소했습니다.");
         return;
       }
-      const next = await invoke<WorkspaceInfo>("set_workspace", {
-        rootPath: selected,
-      });
-      await invoke("start_watch");
-      setWorkspace(next);
-      setActiveFile(null);
-      setContent("");
-      setConflict(null);
-      setStatus("idle");
-      setLastSavedHash(null);
-      setLastWrittenHash(null);
-      lastLocalEditAt.current = null;
-      setMessage(`${next.root} 열림`);
+      await loadWorkspacePath(selected, { persist: true });
     } catch (error) {
       setMessage(`폴더 열기 실패: ${String(error)}`);
     } finally {
       setOpeningWorkspace(false);
     }
-  }, []);
+  }, [loadWorkspacePath]);
 
   const saveFile = useCallback(
     async (nextContent = content, force = false) => {
@@ -198,6 +233,52 @@ export default function App() {
     await navigator.clipboard.writeText(conflict.externalContent);
     setMessage("외부 버전을 클립보드에 복사했습니다.");
   }, [conflict]);
+
+  useEffect(() => {
+    if (restoreAttempted.current) return;
+    restoreAttempted.current = true;
+    const savedWorkspace = window.localStorage.getItem(LAST_WORKSPACE_KEY);
+    if (!savedWorkspace) return;
+
+    let cancelled = false;
+    setRestoringWorkspace(true);
+    setMessage("마지막 workspace를 복원하는 중입니다.");
+    loadWorkspacePath(savedWorkspace, { persist: false, restored: true })
+      .catch((error) => {
+        if (!cancelled) {
+          window.localStorage.removeItem(LAST_WORKSPACE_KEY);
+          setMessage(`마지막 workspace 복원 실패: ${String(error)}`);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setRestoringWorkspace(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadWorkspacePath]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "o") {
+        event.preventDefault();
+        void openWorkspace();
+        return;
+      }
+      if (key === "s") {
+        event.preventDefault();
+        void saveFile(content, true);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [content, openWorkspace, saveFile]);
 
   useEffect(() => {
     if (saveTimer.current) {
@@ -272,10 +353,16 @@ export default function App() {
           <span>{workspace?.root ?? "No workspace"}</span>
         </div>
         <div className="topbar-actions">
-          <button disabled={openingWorkspace} onClick={openWorkspace}>
-            {openingWorkspace ? "여는 중..." : "폴더 열기"}
+          <LayoutToggle mode={layoutMode} onChange={setLayoutMode} />
+          <button
+            disabled={openingWorkspace || restoringWorkspace}
+            onClick={openWorkspace}
+            title="⌘O"
+          >
+            {openingWorkspace ? "여는 중..." : restoringWorkspace ? "복원 중..." : "폴더 열기"}
           </button>
           <button
+            title="⌘S"
             disabled={!activeFile || Boolean(conflict) || status === "saving"}
             onClick={() => void saveFile(content, true)}
           >
@@ -294,7 +381,7 @@ export default function App() {
         </section>
       ) : null}
 
-      <section className="workspace">
+      <section className={`workspace workspace-${layoutMode}`}>
         <aside className="file-pane">
           <div className="pane-title">Files</div>
           {workspace ? (
@@ -342,6 +429,37 @@ export default function App() {
 
       <footer className="statusbar">{message}</footer>
     </main>
+  );
+}
+
+function LayoutToggle({
+  mode,
+  onChange,
+}: {
+  mode: LayoutMode;
+  onChange: (mode: LayoutMode) => void;
+}) {
+  return (
+    <div className="layout-toggle" aria-label="편집기 레이아웃">
+      <button
+        className={mode === "split" ? "active-layout" : ""}
+        onClick={() => onChange("split")}
+      >
+        분할
+      </button>
+      <button
+        className={mode === "editor" ? "active-layout" : ""}
+        onClick={() => onChange("editor")}
+      >
+        편집
+      </button>
+      <button
+        className={mode === "preview" ? "active-layout" : ""}
+        onClick={() => onChange("preview")}
+      >
+        미리보기
+      </button>
+    </div>
   );
 }
 

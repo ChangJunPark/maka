@@ -22,6 +22,16 @@ struct AppState {
     terminals: Mutex<HashMap<String, TerminalSession>>,
 }
 
+const IGNORED_DIR_NAMES: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    "dist",
+    ".next",
+    ".turbo",
+    ".vite",
+];
+
 struct TerminalSession {
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn portable_pty::Child + Send>,
@@ -354,11 +364,21 @@ fn list_markdown_entries(root: &Path) -> Result<Vec<FileEntry>, String> {
 }
 
 fn should_descend(entry: &DirEntry) -> bool {
+    if entry.depth() == 0 {
+        return true;
+    }
     let file_name = entry.file_name().to_string_lossy();
-    !matches!(
-        file_name.as_ref(),
-        ".git" | "node_modules" | "target" | "dist" | ".next" | ".turbo"
-    )
+    !is_ignored_dir_name(&file_name)
+}
+
+fn is_ignored_dir_name(name: &str) -> bool {
+    IGNORED_DIR_NAMES.contains(&name)
+}
+
+fn has_ignored_component(relative_path: &Path) -> bool {
+    relative_path.components().any(|component| {
+        matches!(component, Component::Normal(name) if is_ignored_dir_name(&name.to_string_lossy()))
+    })
 }
 
 fn is_markdown_file(path: &Path) -> bool {
@@ -407,6 +427,9 @@ fn emit_workspace_event(app: &AppHandle, root: &Path, event: Event) {
         let Ok(relative) = path.strip_prefix(root) else {
             continue;
         };
+        if has_ignored_component(relative) {
+            continue;
+        }
         let relative_path = relative.to_string_lossy().to_string();
         let hash = fs::read_to_string(&path)
             .ok()
@@ -463,5 +486,39 @@ mod tests {
         assert!(is_markdown_file(Path::new("notes.markdown")));
         assert!(is_markdown_file(Path::new("doc.mdx")));
         assert!(!is_markdown_file(Path::new("main.rs")));
+    }
+
+    #[test]
+    fn markdown_listing_skips_heavy_workspace_dirs() {
+        let root = std::env::temp_dir().join(format!("maka-list-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(root.join("notes")).unwrap();
+        fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
+        fs::create_dir_all(root.join(".vite/deps")).unwrap();
+        fs::write(root.join("README.md"), "# ok").unwrap();
+        fs::write(root.join("notes/keep.md"), "# ok").unwrap();
+        fs::write(root.join("node_modules/pkg/skip.md"), "# skip").unwrap();
+        fs::write(root.join(".vite/deps/skip.md"), "# skip").unwrap();
+
+        let entries = list_markdown_entries(&root).unwrap();
+        let paths: Vec<_> = entries
+            .iter()
+            .map(|entry| entry.relative_path.as_str())
+            .collect();
+
+        assert!(paths.contains(&"README.md"));
+        assert!(paths.contains(&"notes/keep.md"));
+        assert!(!paths.iter().any(|path| path.contains("node_modules")));
+        assert!(!paths.iter().any(|path| path.contains(".vite")));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn ignored_component_detection_matches_watcher_paths() {
+        assert!(has_ignored_component(Path::new(
+            "node_modules/pkg/README.md"
+        )));
+        assert!(has_ignored_component(Path::new("docs/.vite/generated.md")));
+        assert!(!has_ignored_component(Path::new("docs/README.md")));
     }
 }

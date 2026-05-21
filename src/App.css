@@ -86,11 +86,54 @@ button:disabled {
   gap: 8px;
 }
 
+.layout-toggle {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+}
+
+.layout-toggle button {
+  border: 0;
+  border-radius: 0;
+  padding: 2px 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.layout-toggle button + button {
+  border-left: 1px solid var(--line);
+}
+
+.layout-toggle button.active-layout {
+  color: var(--accent-strong);
+  background: #dfeeee;
+  font-weight: 700;
+}
+
 .workspace {
   min-height: 0;
   display: grid;
   grid-template-columns: 240px minmax(360px, 1fr) minmax(320px, 0.9fr);
   border-bottom: 1px solid var(--line);
+}
+
+.workspace-editor {
+  grid-template-columns: 240px minmax(360px, 1fr);
+}
+
+.workspace-preview {
+  grid-template-columns: 240px minmax(360px, 1fr);
+}
+
+.workspace-editor .preview-pane,
+.workspace-preview .editor-pane {
+  display: none;
+}
+
+.workspace-preview .preview-pane {
+  border-left: 0;
 }
 
 .file-pane,
