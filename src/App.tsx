@@ -89,6 +89,45 @@ function isLayoutMode(value: string | null): value is LayoutMode {
   return value === "split" || value === "editor" || value === "preview";
 }
 
+function basenamePath(path: string) {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+function fileStatusLabel(status: FileStatus) {
+  switch (status) {
+    case "clean":
+      return "저장됨";
+    case "dirty":
+      return "편집 중";
+    case "saving":
+      return "저장 중";
+    case "conflicted":
+      return "충돌";
+    case "deleted":
+      return "삭제됨";
+    case "idle":
+    default:
+      return "대기";
+  }
+}
+
+function terminalStatusLabel(
+  status: "workspace required" | "idle" | "starting" | "running" | "failed",
+) {
+  switch (status) {
+    case "workspace required":
+      return "폴더 필요";
+    case "idle":
+      return "대기";
+    case "starting":
+      return "시작 중";
+    case "running":
+      return "실행 중";
+    case "failed":
+      return "실패";
+  }
+}
+
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
   const [activeFile, setActiveFile] = useState<FileMeta | null>(null);
@@ -107,7 +146,8 @@ export default function App() {
   });
   const [terminalExpanded, setTerminalExpandedState] = useState(() => {
     if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(TERMINAL_EXPANDED_KEY) !== "false";
+    const saved = window.localStorage.getItem(TERMINAL_EXPANDED_KEY);
+    return saved === null ? false : saved === "true";
   });
   const saveTimer = useRef<number | null>(null);
   const lastLocalEditAt = useRef<number | null>(null);
@@ -493,12 +533,16 @@ export default function App() {
     };
   }, [activeFile, content, lastSavedHash, lastWrittenHash, refreshFiles, status]);
 
+  const workspaceLabel = workspace ? basenamePath(workspace.root) : "No workspace";
+
   return (
     <main className={`app-shell ${terminalExpanded ? "" : "terminal-collapsed"}`}>
       <header className="topbar">
-        <div>
+        <div className="topbar-title">
           <h1>Maka</h1>
-          <span>{workspace?.root ?? "No workspace"}</span>
+          <span className="workspace-path" title={workspace?.root ?? "No workspace"}>
+            {workspaceLabel}
+          </span>
         </div>
         <div className="topbar-actions">
           <LayoutToggle mode={layoutMode} onChange={setLayoutMode} />
@@ -608,7 +652,7 @@ export default function App() {
               >
                 Link
               </button>
-              <span className={`status-pill status-${status}`}>{status}</span>
+              <span className={`status-pill status-${status}`}>{fileStatusLabel(status)}</span>
             </span>
           </div>
           {activeFile ? (
@@ -675,13 +719,13 @@ function LayoutToggle({
         className={mode === "editor" ? "active-layout" : ""}
         onClick={() => onChange("editor")}
       >
-        편집
+        쓰기
       </button>
       <button
         className={mode === "preview" ? "active-layout" : ""}
         onClick={() => onChange("preview")}
       >
-        미리보기
+        읽기
       </button>
     </div>
   );
@@ -705,6 +749,7 @@ function FileList({
             <span className="directory">{entry.name}</span>
           ) : (
             <button
+              title={entry.relative_path}
               className={entry.relative_path === activePath ? "active-file" : ""}
               onClick={() => onOpen(entry.relative_path)}
             >
@@ -875,7 +920,9 @@ function TerminalPanel({
       <div className="pane-title">
         <span>Terminal</span>
         <span className="terminal-actions">
-          <span>{terminalStatus}</span>
+          <span className={`terminal-status terminal-status-${terminalStatus.replace(/\s+/g, "-")}`}>
+            {terminalStatusLabel(terminalStatus)}
+          </span>
           <button onClick={() => onExpandedChange(!expanded)}>
             {expanded ? "접기" : "펼치기"}
           </button>
