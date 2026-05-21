@@ -50,6 +50,16 @@ export function markSaved(file: FileMeta, diskHash: string, mtimeMs: number): Fi
   };
 }
 
+export function updateConflictLocalContent(
+  conflict: ConflictState,
+  localContent: string,
+): ConflictState {
+  return {
+    ...conflict,
+    localContent,
+  };
+}
+
 export function applyExternalChange(
   file: FileMeta,
   input: {

@@ -4,6 +4,7 @@ import {
   markDirty,
   markSaved,
   startFileSession,
+  updateConflictLocalContent,
 } from "./fileState";
 
 describe("file state transitions", () => {
@@ -108,6 +109,26 @@ describe("file state transitions", () => {
       const resolved = markSaved(file, result.conflict.externalHash, result.conflict.externalMtimeMs);
       expect(resolved.dirty).toBe(false);
       expect(resolved.lastKnownDiskHash).toBe("hash-b");
+    }
+  });
+
+  it("keeps the conflict active while refreshing local conflicted edits", () => {
+    const file = markDirty(startFileSession("README.md", "hash-a", 100));
+    const result = applyExternalChange(file, {
+      externalHash: "hash-b",
+      externalContent: "external",
+      externalMtimeMs: 200,
+      currentContent: "local v1",
+    });
+
+    expect(result.kind).toBe("conflict");
+    if (result.kind === "conflict") {
+      const updated = updateConflictLocalContent(result.conflict, "local v2");
+      expect(updated).toMatchObject({
+        localContent: "local v2",
+        externalContent: "external",
+        externalHash: "hash-b",
+      });
     }
   });
 });

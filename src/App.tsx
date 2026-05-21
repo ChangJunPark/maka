@@ -20,6 +20,7 @@ import {
   markDirty,
   markSaved,
   startFileSession,
+  updateConflictLocalContent,
 } from "./lib/fileState";
 
 type FileEntry = {
@@ -141,11 +142,11 @@ export default function App() {
   const handleEditorChange = useCallback(
     (value: string) => {
       setContent(value);
-      setConflict(null);
+      setConflict((current) => (current ? updateConflictLocalContent(current, value) : current));
       setActiveFile((current) => (current ? markDirty(current) : current));
-      setStatus(activeFile ? "dirty" : "idle");
+      setStatus(activeFile ? (conflict ? "conflicted" : "dirty") : "idle");
     },
-    [activeFile],
+    [activeFile, conflict],
   );
 
   const resolveKeepLocal = useCallback(() => {
@@ -238,7 +239,10 @@ export default function App() {
         </div>
         <div className="topbar-actions">
           <button onClick={openWorkspace}>폴더 열기</button>
-          <button disabled={!activeFile || status === "saving"} onClick={() => void saveFile(content, true)}>
+          <button
+            disabled={!activeFile || Boolean(conflict) || status === "saving"}
+            onClick={() => void saveFile(content, true)}
+          >
             저장
           </button>
         </div>
