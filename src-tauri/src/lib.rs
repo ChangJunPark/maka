@@ -12,7 +12,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter, Listener, Manager, State};
-use tauri_plugin_dialog::{DialogExt, FilePath};
 use uuid::Uuid;
 use walkdir::{DirEntry, WalkDir};
 
@@ -65,20 +64,19 @@ struct TerminalOutput {
 }
 
 #[tauri::command]
-fn open_workspace(app: AppHandle, state: State<AppState>) -> Result<Option<WorkspaceInfo>, String> {
-    let Some(picked) = app.dialog().file().blocking_pick_folder() else {
-        return Ok(None);
-    };
-    let root = dialog_path_to_path_buf(picked)?;
-    let root = root
+fn set_workspace(root_path: String, state: State<AppState>) -> Result<WorkspaceInfo, String> {
+    let root = PathBuf::from(root_path)
         .canonicalize()
         .map_err(|err| format!("failed to canonicalize workspace: {err}"))?;
+    if !root.is_dir() {
+        return Err("workspace path is not a directory".to_string());
+    }
     let files = list_markdown_entries(&root)?;
     *state.workspace_root.lock().map_err(lock_error)? = Some(root.clone());
-    Ok(Some(WorkspaceInfo {
+    Ok(WorkspaceInfo {
         root: root.to_string_lossy().to_string(),
         files,
-    }))
+    })
 }
 
 #[tauri::command]
@@ -256,7 +254,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            open_workspace,
+            set_workspace,
             list_files,
             read_file,
             write_file,
@@ -428,13 +426,6 @@ fn emit_workspace_event(app: &AppHandle, root: &Path, event: Event) {
                 hash,
             },
         );
-    }
-}
-
-fn dialog_path_to_path_buf(file_path: FilePath) -> Result<PathBuf, String> {
-    match file_path {
-        FilePath::Path(path) => Ok(path),
-        FilePath::Url(url) => Err(format!("URL workspaces are not supported: {url}")),
     }
 }
 

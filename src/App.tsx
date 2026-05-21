@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorView } from "@codemirror/view";
@@ -62,6 +63,8 @@ const markdownExtensions = [
   }),
 ];
 
+const RECENT_LOCAL_EDIT_CONFLICT_WINDOW_MS = 15_000;
+
 mermaid.initialize({
   startOnLoad: false,
   securityLevel: "strict",
@@ -77,7 +80,9 @@ export default function App() {
   const [lastSavedHash, setLastSavedHash] = useState<string | null>(null);
   const [lastWrittenHash, setLastWrittenHash] = useState<string | null>(null);
   const [message, setMessage] = useState("로컬 폴더를 열어 Markdown 작업을 시작하세요.");
+  const [openingWorkspace, setOpeningWorkspace] = useState(false);
   const saveTimer = useRef<number | null>(null);
+  const lastLocalEditAt = useRef<number | null>(null);
 
   const markdownFiles = useMemo(
     () => workspace?.files.filter((entry) => !entry.is_dir) ?? [],
@@ -98,6 +103,7 @@ export default function App() {
       setContent(payload.content);
       setLastSavedHash(payload.hash);
       setLastWrittenHash(null);
+      lastLocalEditAt.current = null;
       setConflict(null);
       setStatus("clean");
       setMessage(`${payload.relative_path} 열림`);
@@ -106,17 +112,36 @@ export default function App() {
   );
 
   const openWorkspace = useCallback(async () => {
-    const next = await invoke<WorkspaceInfo | null>("open_workspace");
-    if (!next) return;
-    setWorkspace(next);
-    setActiveFile(null);
-    setContent("");
-    setConflict(null);
-    setStatus("idle");
-    setLastSavedHash(null);
-    setLastWrittenHash(null);
-    setMessage(`${next.root} 열림`);
-    await invoke("start_watch");
+    setOpeningWorkspace(true);
+    setMessage("폴더를 선택하는 중입니다.");
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Maka workspace 열기",
+      });
+      if (selected === null || Array.isArray(selected)) {
+        setMessage("폴더 열기를 취소했습니다.");
+        return;
+      }
+      const next = await invoke<WorkspaceInfo>("set_workspace", {
+        rootPath: selected,
+      });
+      await invoke("start_watch");
+      setWorkspace(next);
+      setActiveFile(null);
+      setContent("");
+      setConflict(null);
+      setStatus("idle");
+      setLastSavedHash(null);
+      setLastWrittenHash(null);
+      lastLocalEditAt.current = null;
+      setMessage(`${next.root} 열림`);
+    } catch (error) {
+      setMessage(`폴더 열기 실패: ${String(error)}`);
+    } finally {
+      setOpeningWorkspace(false);
+    }
   }, []);
 
   const saveFile = useCallback(
@@ -142,6 +167,7 @@ export default function App() {
   const handleEditorChange = useCallback(
     (value: string) => {
       setContent(value);
+      lastLocalEditAt.current = Date.now();
       setConflict((current) => (current ? updateConflictLocalContent(current, value) : current));
       setActiveFile((current) => (current ? markDirty(current) : current));
       setStatus(activeFile ? (conflict ? "conflicted" : "dirty") : "idle");
@@ -161,6 +187,7 @@ export default function App() {
     setActiveFile(markSaved(activeFile, conflict.externalHash, conflict.externalMtimeMs));
     setLastSavedHash(conflict.externalHash);
     setLastWrittenHash(null);
+    lastLocalEditAt.current = null;
     setConflict(null);
     setStatus("clean");
     setMessage("외부 변경을 불러왔습니다.");
@@ -205,8 +232,15 @@ export default function App() {
         relativePath: activeFile.relativePath,
       });
       if (external.hash === lastSavedHash && status !== "dirty") return;
+      const hasRecentLocalEdit =
+        lastLocalEditAt.current !== null &&
+        Date.now() - lastLocalEditAt.current < RECENT_LOCAL_EDIT_CONFLICT_WINDOW_MS;
+      const fileForExternalChange =
+        hasRecentLocalEdit && external.content !== content
+          ? { ...activeFile, dirty: true }
+          : activeFile;
 
-      const result = applyExternalChange(activeFile, {
+      const result = applyExternalChange(fileForExternalChange, {
         externalHash: external.hash,
         externalContent: external.content,
         externalMtimeMs: external.mtime_ms,
@@ -238,7 +272,9 @@ export default function App() {
           <span>{workspace?.root ?? "No workspace"}</span>
         </div>
         <div className="topbar-actions">
-          <button onClick={openWorkspace}>폴더 열기</button>
+          <button disabled={openingWorkspace} onClick={openWorkspace}>
+            {openingWorkspace ? "여는 중..." : "폴더 열기"}
+          </button>
           <button
             disabled={!activeFile || Boolean(conflict) || status === "saving"}
             onClick={() => void saveFile(content, true)}
@@ -392,10 +428,18 @@ function TerminalPanel({ workspaceRoot }: { workspaceRoot: string | null }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [enabled, setEnabled] = useState(false);
+  const [terminalStatus, setTerminalStatus] = useState<
+    "workspace required" | "idle" | "starting" | "running" | "failed"
+  >("workspace required");
 
   useEffect(() => {
-    if (!workspaceRoot || !containerRef.current) return;
+    setEnabled(false);
+    setTerminalStatus(workspaceRoot ? "idle" : "workspace required");
+  }, [workspaceRoot]);
+
+  useEffect(() => {
+    if (!workspaceRoot || !enabled || !containerRef.current) return;
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -412,6 +456,7 @@ function TerminalPanel({ workspaceRoot }: { workspaceRoot: string | null }) {
     fit.fit();
     terminalRef.current = terminal;
     fitRef.current = fit;
+    setTerminalStatus("starting");
 
     let disposed = false;
     let activeSession: string | null = null;
@@ -425,8 +470,12 @@ function TerminalPanel({ workspaceRoot }: { workspaceRoot: string | null }) {
         return;
       }
       activeSession = id;
-      setSessionId(id);
+      setTerminalStatus("running");
       terminal.focus();
+    }).catch((error) => {
+      if (disposed) return;
+      setTerminalStatus("failed");
+      terminal.writeln(`터미널 시작 실패: ${String(error)}`);
     });
 
     const dataDisposable = terminal.onData((data) => {
@@ -458,18 +507,33 @@ function TerminalPanel({ workspaceRoot }: { workspaceRoot: string | null }) {
       if (activeSession) {
         void invoke("stop_terminal", { sessionId: activeSession });
       }
-      setSessionId(null);
+      setTerminalStatus(workspaceRoot ? "idle" : "workspace required");
       terminal.dispose();
     };
-  }, [workspaceRoot]);
+  }, [enabled, workspaceRoot]);
 
   return (
     <section className="terminal-pane">
       <div className="pane-title">
         <span>Terminal</span>
-        <span>{workspaceRoot ? sessionId ? "running" : "starting" : "workspace required"}</span>
+        <span className="terminal-actions">
+          <span>{terminalStatus}</span>
+          {enabled ? (
+            <button onClick={() => setEnabled(false)}>터미널 중지</button>
+          ) : (
+            <button disabled={!workspaceRoot} onClick={() => setEnabled(true)}>
+              터미널 시작
+            </button>
+          )}
+        </span>
       </div>
-      <div className="terminal-container" ref={containerRef} />
+      <div className="terminal-container" ref={containerRef}>
+        {!enabled ? (
+          <div className="terminal-placeholder">
+            폴더를 연 뒤 터미널 시작을 누르면 workspace 기준 셸이 열립니다.
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }
