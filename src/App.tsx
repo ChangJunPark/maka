@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -107,7 +107,9 @@ export default function App() {
   const saveTimer = useRef<number | null>(null);
   const lastLocalEditAt = useRef<number | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
-  const previewRef = useRef<HTMLElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const previewScrollTopBeforeEdit = useRef<number | null>(null);
+  const suppressPreviewSyncUntil = useRef(0);
   const restoreAttempted = useRef(false);
 
   const markdownFiles = useMemo(
@@ -122,6 +124,7 @@ export default function App() {
         scroll: (_event, view) => {
           const preview = previewRef.current;
           if (!preview || layoutMode === "editor") return false;
+          if (Date.now() < suppressPreviewSyncUntil.current) return false;
           const source = view.scrollDOM;
           const sourceMax = source.scrollHeight - source.clientHeight;
           const previewMax = preview.scrollHeight - preview.clientHeight;
@@ -276,6 +279,8 @@ export default function App() {
 
   const handleEditorChange = useCallback(
     (value: string) => {
+      previewScrollTopBeforeEdit.current = previewRef.current?.scrollTop ?? null;
+      suppressPreviewSyncUntil.current = Date.now() + 250;
       setContent(value);
       lastLocalEditAt.current = Date.now();
       setConflict((current) => (current ? updateConflictLocalContent(current, value) : current));
@@ -284,6 +289,14 @@ export default function App() {
     },
     [activeFile, conflict],
   );
+
+  useLayoutEffect(() => {
+    const previousScrollTop = previewScrollTopBeforeEdit.current;
+    const preview = previewRef.current;
+    if (previousScrollTop === null || !preview) return;
+    preview.scrollTop = previousScrollTop;
+    previewScrollTopBeforeEdit.current = null;
+  }, [content]);
 
   const applyFormatting = useCallback((action: FormattingAction) => {
     const view = editorViewRef.current;
@@ -590,6 +603,7 @@ export default function App() {
           </div>
           {activeFile ? (
             <CodeMirror
+              className="markdown-editor"
               value={content}
               height="100%"
               extensions={editorExtensions}
@@ -610,9 +624,11 @@ export default function App() {
           )}
         </section>
 
-        <section className="preview-pane" ref={previewRef}>
+        <section className="preview-pane">
           <div className="pane-title">Preview</div>
-          <MarkdownPreview markdown={content} />
+          <div className="preview-scroll" ref={previewRef}>
+            <MarkdownPreview markdown={content} />
+          </div>
         </section>
       </section>
 

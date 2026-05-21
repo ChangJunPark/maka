@@ -150,6 +150,12 @@ button:disabled {
   border-right: 1px solid var(--line);
 }
 
+.editor-pane,
+.preview-pane {
+  display: flex;
+  flex-direction: column;
+}
+
 .pane-title {
   height: 34px;
   display: flex;
@@ -198,12 +204,24 @@ button:disabled {
   font-weight: 700;
 }
 
+.markdown-editor {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .editor-pane .cm-editor {
-  height: calc(100% - 34px);
+  height: 100%;
   font-size: 14px;
 }
 
-.preview-pane {
+.editor-pane .cm-scroller {
+  overflow: auto;
+}
+
+.preview-scroll {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 
