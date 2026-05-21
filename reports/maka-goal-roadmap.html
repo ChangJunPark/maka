@@ -477,10 +477,10 @@
         Tauri 기반 데스크톱 에디터를 만드는 것이다.
       </p>
       <div class="meta-grid">
-        <div class="meta-card"><strong>6 / 10</strong><span>v1 실사용 목표 기준 완료 단계</span></div>
-        <div class="meta-card"><strong>4단계</strong><span>v1이라고 부르기 전 남은 핵심 단계</span></div>
-        <div class="meta-card"><strong>MVP+</strong><span>현재 상태: 핵심 기능 구현 + 1차 사용성 개선 완료</span></div>
-        <div class="meta-card"><strong>bc8bbb1</strong><span>최신 푸시 커밋: 작업 컨텍스트 기억</span></div>
+        <div class="meta-card"><strong>9 / 10</strong><span>v1 실사용 목표 기준 완료 단계</span></div>
+        <div class="meta-card"><strong>1단계</strong><span>v1이라고 부르기 전 남은 핵심 단계</span></div>
+        <div class="meta-card"><strong>v1 후보</strong><span>현재 상태: 파일 작업 UX + 작성 polish 진행</span></div>
+        <div class="meta-card"><strong>v1 push</strong><span>파일 UX, 작성 polish, 디자인 리뷰까지 반영</span></div>
       </div>
     </section>
 
@@ -520,14 +520,14 @@
       <h2>2. 현재 진행률</h2>
       <div class="progress-wrap">
         <div>
-          <div class="progress-bar"><div class="progress-fill"></div></div>
+          <div class="progress-bar"><div class="progress-fill" style="width: 90%"></div></div>
           <p style="margin-top: 12px;">
             핵심 MVP는 이미 동작한다. 이제 남은 것은 “앱처럼 매일 쓰기 좋은 수준”으로 만드는 안정화와 UX polish다.
           </p>
         </div>
         <div class="progress-label">
-          <strong>60%</strong>
-          v1 실사용 목표 기준. MVP acceptance는 대부분 통과했고, release/UX polish가 남았다.
+          <strong>90%</strong>
+          v1 실사용 목표 기준. 파일 작업, 작성 polish, 디자인 리뷰, 앱 번들 검증까지 들어왔고 실제 GUI smoke와 배포 서명이 남았다.
         </div>
       </div>
       <div class="cards">
@@ -541,7 +541,7 @@
         </div>
         <div class="mini-card">
           <h3>아직 부족</h3>
-          <p>파일 생성/rename, preview scroll sync, terminal panel polish, release packaging/documentation.</p>
+          <p>실제 GUI smoke, terminal/restart 확인, signing/notarization 판단.</p>
         </div>
       </div>
     </section>
@@ -587,28 +587,28 @@
           <span class="status-badge done">완료</span>
         </article>
         <article class="step">
-          <div class="dot doing">7</div>
-          <div><div class="step-kicker">Next</div><h3>파일 작업 UX</h3></div>
-          <p>새 Markdown 파일 만들기, 파일 rename, 안전한 삭제/이동 정책, 현재 파일이 외부 삭제된 경우 UX 강화.</p>
-          <span class="status-badge doing">다음</span>
+          <div class="dot done">7</div>
+          <div><div class="step-kicker">Done</div><h3>파일 작업 UX</h3></div>
+          <p>새 Markdown 파일 만들기, 파일 rename, 삭제 confirm, workspace-root backend 명령 기반 파일 작업.</p>
+          <span class="status-badge done">완료</span>
         </article>
         <article class="step">
-          <div class="dot todo">8</div>
-          <div><div class="step-kicker">Todo</div><h3>작성 UX polish</h3></div>
-          <p>editor → preview scroll sync, Markdown toolbar/단축키, 저장 상태/최근 저장 시각, preview-only flow 개선.</p>
-          <span class="status-badge todo">남음</span>
+          <div class="dot done">8</div>
+          <div><div class="step-kicker">Done</div><h3>작성 UX polish</h3></div>
+          <p>editor → preview scroll sync, Markdown toolbar, Cmd+B/I/K, layout persistence, 상태 hint 표시.</p>
+          <span class="status-badge done">완료</span>
         </article>
         <article class="step">
-          <div class="dot todo">9</div>
-          <div><div class="step-kicker">Todo</div><h3>성능/안정성</h3></div>
-          <p>Mermaid lazy loading, watcher debounce, 대형 workspace 경고, terminal resize/종료 lifecycle hardening.</p>
-          <span class="status-badge todo">남음</span>
+          <div class="dot doing">9</div>
+          <div><div class="step-kicker">Doing</div><h3>성능/안정성</h3></div>
+          <p>Mermaid lazy loading은 반영. 남은 것은 watcher debounce, 대형 workspace 경고, terminal/restart GUI smoke.</p>
+          <span class="status-badge doing">진행</span>
         </article>
         <article class="step">
-          <div class="dot todo">10</div>
-          <div><div class="step-kicker">Todo</div><h3>배포 준비</h3></div>
-          <p>앱 아이콘, DMG/release artifact, README 사용법, 수동 GUI smoke checklist, 필요 시 signing/notarization.</p>
-          <span class="status-badge todo">남음</span>
+          <div class="dot doing">10</div>
+          <div><div class="step-kicker">Doing</div><h3>배포 준비</h3></div>
+          <p>README, smoke checklist, 디자인 리뷰, macOS app bundle 경로는 준비됨. 남은 것은 실제 GUI smoke와 signing/notarization 판단.</p>
+          <span class="status-badge doing">진행</span>
         </article>
       </div>
     </section>
@@ -693,9 +693,8 @@
     <section class="section">
       <h2>7. 추천 다음 액션</h2>
       <p>
-        다음 작업은 <strong>파일 작업 UX 완성</strong>으로 잡는 것이 가장 좋다. 지금 앱은 열고 쓰는 것은 되지만,
-        새 문서를 만들거나 이름을 바꾸는 흐름이 아직 약하다. 즉, 다음 커밋 목표는
-        <code>새 Markdown 파일 만들기 + rename + 간단 GUI smoke</code>가 가장 효율적이다.
+        다음 작업은 <strong>실제 GUI smoke + release signing 판단</strong>으로 잡는 것이 가장 좋다.
+        기능과 문서/디자인 리뷰는 v1 후보 수준까지 왔으므로, 이제 실제 macOS 창에서 파일 생성/rename/delete/terminal/restart를 확인하면 된다.
       </p>
     </section>
 

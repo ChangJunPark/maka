@@ -320,3 +320,30 @@ button:disabled {
   align-items: center;
   justify-content: center;
 }
+
+.file-actions,
+.editor-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-actions button,
+.editor-actions button {
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.editor-actions button {
+  font-weight: 700;
+}
+
+.statusbar {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.statusbar-hints {
+  color: var(--muted);
+  white-space: nowrap;
+}

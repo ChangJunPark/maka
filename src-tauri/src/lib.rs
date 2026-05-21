@@ -117,6 +117,52 @@ fn write_file(
 }
 
 #[tauri::command]
+fn create_file(relative_path: String, state: State<AppState>) -> Result<FilePayload, String> {
+    let root = workspace_root(&state)?;
+    let relative_path = markdown_relative_path(&relative_path)?;
+    let path = safe_join_for_new_file(&root, &relative_path)?;
+    if path.exists() {
+        return Err(format!("file already exists: {relative_path}"));
+    }
+    let content = default_markdown_content(&relative_path);
+    fs::write(&path, &content).map_err(|err| format!("failed to create {relative_path}: {err}"))?;
+    Ok(file_payload(relative_path, content, &path)?)
+}
+
+#[tauri::command]
+fn rename_file(
+    old_relative_path: String,
+    new_relative_path: String,
+    state: State<AppState>,
+) -> Result<FilePayload, String> {
+    let root = workspace_root(&state)?;
+    let old_path = safe_join(&root, &old_relative_path)?;
+    if !old_path.is_file() {
+        return Err(format!("file does not exist: {old_relative_path}"));
+    }
+    let new_relative_path = markdown_relative_path(&new_relative_path)?;
+    let new_path = safe_join_for_new_file(&root, &new_relative_path)?;
+    if new_path.exists() {
+        return Err(format!("file already exists: {new_relative_path}"));
+    }
+    fs::rename(&old_path, &new_path)
+        .map_err(|err| format!("failed to rename {old_relative_path}: {err}"))?;
+    let content = fs::read_to_string(&new_path)
+        .map_err(|err| format!("failed to read {new_relative_path}: {err}"))?;
+    Ok(file_payload(new_relative_path, content, &new_path)?)
+}
+
+#[tauri::command]
+fn delete_file(relative_path: String, state: State<AppState>) -> Result<(), String> {
+    let root = workspace_root(&state)?;
+    let path = safe_join(&root, &relative_path)?;
+    if !path.is_file() {
+        return Err(format!("file does not exist: {relative_path}"));
+    }
+    fs::remove_file(&path).map_err(|err| format!("failed to delete {relative_path}: {err}"))
+}
+
+#[tauri::command]
 fn start_watch(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let root = workspace_root(&state)?;
     let watch_root = root.clone();
@@ -268,6 +314,9 @@ pub fn run() {
             list_files,
             read_file,
             write_file,
+            create_file,
+            rename_file,
+            delete_file,
             start_watch,
             start_terminal,
             terminal_write,
@@ -302,17 +351,7 @@ fn workspace_root(state: &State<AppState>) -> Result<PathBuf, String> {
 
 fn safe_join(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
     let relative = Path::new(relative_path);
-    if relative.is_absolute() {
-        return Err("absolute paths are not allowed".to_string());
-    }
-    if relative.components().any(|component| {
-        matches!(
-            component,
-            Component::ParentDir | Component::RootDir | Component::Prefix(_)
-        )
-    }) {
-        return Err("path traversal is not allowed".to_string());
-    }
+    validate_relative_path(relative)?;
 
     let candidate = root.join(relative);
     let parent = candidate
@@ -325,6 +364,70 @@ fn safe_join(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
         return Err("path escapes workspace root".to_string());
     }
     Ok(candidate)
+}
+
+fn safe_join_for_new_file(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(relative_path);
+    validate_relative_path(relative)?;
+    let candidate = root.join(relative);
+    let parent = candidate
+        .parent()
+        .ok_or_else(|| "file path has no parent".to_string())?;
+    fs::create_dir_all(parent)
+        .map_err(|err| format!("failed to create parent directories: {err}"))?;
+    let canonical_parent = parent
+        .canonicalize()
+        .map_err(|err| format!("failed to canonicalize parent path: {err}"))?;
+    if !canonical_parent.starts_with(root) {
+        return Err("path escapes workspace root".to_string());
+    }
+    Ok(candidate)
+}
+
+fn validate_relative_path(relative: &Path) -> Result<(), String> {
+    if relative.as_os_str().is_empty() {
+        return Err("file path is required".to_string());
+    }
+    if relative.is_absolute() {
+        return Err("absolute paths are not allowed".to_string());
+    }
+    if relative.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        return Err("path traversal is not allowed".to_string());
+    }
+    Ok(())
+}
+
+fn markdown_relative_path(input: &str) -> Result<String, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("file name is required".to_string());
+    }
+    let mut relative = PathBuf::from(trimmed);
+    validate_relative_path(&relative)?;
+    if relative.extension().is_none() {
+        relative.set_extension("md");
+    }
+    if !is_markdown_file(&relative) {
+        return Err("only Markdown files (.md, .markdown, .mdx) can be managed here".to_string());
+    }
+    if has_ignored_component(&relative) {
+        return Err("file path uses an ignored directory".to_string());
+    }
+    Ok(relative.to_string_lossy().to_string())
+}
+
+fn default_markdown_content(relative_path: &str) -> String {
+    let stem = Path::new(relative_path)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("Untitled")
+        .replace(['-', '_'], " ");
+    format!("# {stem}\n")
 }
 
 fn list_markdown_entries(root: &Path) -> Result<Vec<FileEntry>, String> {
@@ -510,6 +613,32 @@ mod tests {
         assert!(!paths.iter().any(|path| path.contains("node_modules")));
         assert!(!paths.iter().any(|path| path.contains(".vite")));
 
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn markdown_relative_path_adds_md_extension_and_rejects_bad_paths() {
+        assert_eq!(
+            markdown_relative_path("notes/todo").unwrap(),
+            "notes/todo.md"
+        );
+        assert_eq!(
+            markdown_relative_path("notes/todo.markdown").unwrap(),
+            "notes/todo.markdown"
+        );
+        assert!(markdown_relative_path("../outside.md").is_err());
+        assert!(markdown_relative_path("node_modules/skip.md").is_err());
+        assert!(markdown_relative_path("script.js").is_err());
+    }
+
+    #[test]
+    fn safe_join_for_new_file_creates_parent_inside_workspace() {
+        let temp_root = std::env::temp_dir().join(format!("maka-create-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&temp_root).unwrap();
+        let root = temp_root.canonicalize().unwrap();
+        let path = safe_join_for_new_file(&root, "notes/new.md").unwrap();
+        assert!(path.starts_with(&root));
+        assert!(root.join("notes").is_dir());
         fs::remove_dir_all(root).unwrap();
     }
 

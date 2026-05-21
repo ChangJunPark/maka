@@ -8,7 +8,6 @@ import { EditorView } from "@codemirror/view";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
-import mermaid from "mermaid";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -54,6 +53,8 @@ type TerminalOutput = {
   data: string;
 };
 
+type FormattingAction = "heading" | "bold" | "italic" | "code" | "link";
+
 const markdownExtensions = [
   markdown(),
   EditorView.lineWrapping,
@@ -67,17 +68,25 @@ const RECENT_LOCAL_EDIT_CONFLICT_WINDOW_MS = 15_000;
 const LAST_WORKSPACE_KEY = "maka:lastWorkspace";
 const LAYOUT_MODE_KEY = "maka:layoutMode";
 
+let mermaidPromise: Promise<typeof import("mermaid").default> | null = null;
+
+async function loadMermaid() {
+  mermaidPromise ??= import("mermaid").then(({ default: mermaid }) => {
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: "neutral",
+    });
+    return mermaid;
+  });
+  return mermaidPromise;
+}
+
 type LayoutMode = "split" | "editor" | "preview";
 
 function isLayoutMode(value: string | null): value is LayoutMode {
   return value === "split" || value === "editor" || value === "preview";
 }
-
-mermaid.initialize({
-  startOnLoad: false,
-  securityLevel: "strict",
-  theme: "neutral",
-});
 
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
@@ -97,11 +106,32 @@ export default function App() {
   });
   const saveTimer = useRef<number | null>(null);
   const lastLocalEditAt = useRef<number | null>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
+  const previewRef = useRef<HTMLElement | null>(null);
   const restoreAttempted = useRef(false);
 
   const markdownFiles = useMemo(
     () => workspace?.files.filter((entry) => !entry.is_dir) ?? [],
     [workspace],
+  );
+
+  const editorExtensions = useMemo(
+    () => [
+      ...markdownExtensions,
+      EditorView.domEventHandlers({
+        scroll: (_event, view) => {
+          const preview = previewRef.current;
+          if (!preview || layoutMode === "editor") return false;
+          const source = view.scrollDOM;
+          const sourceMax = source.scrollHeight - source.clientHeight;
+          const previewMax = preview.scrollHeight - preview.clientHeight;
+          if (sourceMax <= 0 || previewMax <= 0) return false;
+          preview.scrollTop = (source.scrollTop / sourceMax) * previewMax;
+          return false;
+        },
+      }),
+    ],
+    [layoutMode],
   );
 
   const refreshFiles = useCallback(async () => {
@@ -179,9 +209,54 @@ export default function App() {
     }
   }, [loadWorkspacePath]);
 
+  const createMarkdownFile = useCallback(async () => {
+    if (!workspace) return;
+    const name = window.prompt("새 Markdown 파일 이름", "Untitled.md");
+    if (!name) return;
+    try {
+      const payload = await invoke<FilePayload>("create_file", { relativePath: name });
+      await refreshFiles();
+      await readActiveFile(payload.relative_path);
+      setMessage(`새 파일 생성됨: ${payload.relative_path}`);
+    } catch (error) {
+      setMessage(`새 파일 생성 실패: ${String(error)}`);
+    }
+  }, [readActiveFile, refreshFiles, workspace]);
+
+  const renameActiveFile = useCallback(async () => {
+    if (!activeFile || conflict || status === "dirty" || status === "saving" || status === "deleted") return;
+    const nextName = window.prompt("새 파일 경로 또는 이름", activeFile.relativePath);
+    if (!nextName || nextName === activeFile.relativePath) return;
+    try {
+      const payload = await invoke<FilePayload>("rename_file", {
+        oldRelativePath: activeFile.relativePath,
+        newRelativePath: nextName,
+      });
+      await refreshFiles();
+      await readActiveFile(payload.relative_path);
+      setMessage(`파일 이름 변경됨: ${payload.relative_path}`);
+    } catch (error) {
+      setMessage(`파일 이름 변경 실패: ${String(error)}`);
+    }
+  }, [activeFile, conflict, readActiveFile, refreshFiles, status]);
+
+  const deleteActiveFile = useCallback(async () => {
+    if (!activeFile || conflict || status === "dirty" || status === "saving" || status === "deleted") return;
+    const ok = window.confirm(`${activeFile.relativePath} 파일을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`);
+    if (!ok) return;
+    try {
+      await invoke("delete_file", { relativePath: activeFile.relativePath });
+      await refreshFiles();
+      resetOpenFileState();
+      setMessage(`파일 삭제됨: ${activeFile.relativePath}`);
+    } catch (error) {
+      setMessage(`파일 삭제 실패: ${String(error)}`);
+    }
+  }, [activeFile, refreshFiles, resetOpenFileState, status]);
+
   const saveFile = useCallback(
     async (nextContent = content, force = false) => {
-      if (!activeFile || conflict || (!force && status !== "dirty")) return;
+      if (!activeFile || conflict || status === "deleted" || (!force && status !== "dirty")) return;
       setStatus("saving");
       const payload = await invoke<FilePayload>("write_file", {
         relativePath: activeFile.relativePath,
@@ -209,6 +284,36 @@ export default function App() {
     },
     [activeFile, conflict],
   );
+
+  const applyFormatting = useCallback((action: FormattingAction) => {
+    const view = editorViewRef.current;
+    if (!view || !activeFile || conflict || status === "deleted") return;
+    const selection = view.state.selection.main;
+    const selected = view.state.doc.sliceString(selection.from, selection.to);
+    const wrap = (before: string, after = before, fallback = "text") => {
+      const value = selected || fallback;
+      view.dispatch({
+        changes: { from: selection.from, to: selection.to, insert: `${before}${value}${after}` },
+        selection: {
+          anchor: selection.from + before.length,
+          head: selection.from + before.length + value.length,
+        },
+        scrollIntoView: true,
+      });
+      view.focus();
+    };
+
+    if (action === "heading") {
+      const line = view.state.doc.lineAt(selection.from);
+      view.dispatch({ changes: { from: line.from, insert: "# " }, scrollIntoView: true });
+      view.focus();
+      return;
+    }
+    if (action === "bold") wrap("**", "**", "bold text");
+    if (action === "italic") wrap("_", "_", "italic text");
+    if (action === "code") wrap("`", "`", "code");
+    if (action === "link") wrap("[", "](https://)", "link text");
+  }, [activeFile, conflict, status]);
 
   const resolveKeepLocal = useCallback(() => {
     setConflict(null);
@@ -273,12 +378,32 @@ export default function App() {
       if (key === "s") {
         event.preventDefault();
         void saveFile(content, true);
+        return;
+      }
+      if (key === "n") {
+        event.preventDefault();
+        void createMarkdownFile();
+        return;
+      }
+      if (key === "b") {
+        event.preventDefault();
+        applyFormatting("bold");
+        return;
+      }
+      if (key === "i") {
+        event.preventDefault();
+        applyFormatting("italic");
+        return;
+      }
+      if (key === "k") {
+        event.preventDefault();
+        applyFormatting("link");
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [content, openWorkspace, saveFile]);
+  }, [applyFormatting, content, createMarkdownFile, openWorkspace, saveFile]);
 
   useEffect(() => {
     if (saveTimer.current) {
@@ -363,7 +488,7 @@ export default function App() {
           </button>
           <button
             title="⌘S"
-            disabled={!activeFile || Boolean(conflict) || status === "saving"}
+            disabled={!activeFile || Boolean(conflict) || status === "saving" || status === "deleted"}
             onClick={() => void saveFile(content, true)}
           >
             저장
@@ -383,7 +508,38 @@ export default function App() {
 
       <section className={`workspace workspace-${layoutMode}`}>
         <aside className="file-pane">
-          <div className="pane-title">Files</div>
+          <div className="pane-title">
+            <span>Files</span>
+            <span className="file-actions">
+              <button disabled={!workspace} onClick={() => void createMarkdownFile()} title="⌘N">
+                +
+              </button>
+              <button
+                disabled={
+                  !activeFile ||
+                  Boolean(conflict) ||
+                  status === "dirty" ||
+                  status === "saving" ||
+                  status === "deleted"
+                }
+                onClick={() => void renameActiveFile()}
+              >
+                이름
+              </button>
+              <button
+                disabled={
+                  !activeFile ||
+                  Boolean(conflict) ||
+                  status === "dirty" ||
+                  status === "saving" ||
+                  status === "deleted"
+                }
+                onClick={() => void deleteActiveFile()}
+              >
+                삭제
+              </button>
+            </span>
+          </div>
           {workspace ? (
             <FileList
               entries={workspace.files}
@@ -398,14 +554,49 @@ export default function App() {
         <section className="editor-pane">
           <div className="pane-title">
             <span>{activeFile?.relativePath ?? "Editor"}</span>
-            <span className={`status-pill status-${status}`}>{status}</span>
+            <span className="editor-actions">
+              <button
+                disabled={!activeFile || Boolean(conflict) || status === "deleted"}
+                onClick={() => applyFormatting("heading")}
+              >
+                H1
+              </button>
+              <button
+                disabled={!activeFile || Boolean(conflict) || status === "deleted"}
+                onClick={() => applyFormatting("bold")}
+              >
+                B
+              </button>
+              <button
+                disabled={!activeFile || Boolean(conflict) || status === "deleted"}
+                onClick={() => applyFormatting("italic")}
+              >
+                I
+              </button>
+              <button
+                disabled={!activeFile || Boolean(conflict) || status === "deleted"}
+                onClick={() => applyFormatting("code")}
+              >
+                Code
+              </button>
+              <button
+                disabled={!activeFile || Boolean(conflict) || status === "deleted"}
+                onClick={() => applyFormatting("link")}
+              >
+                Link
+              </button>
+              <span className={`status-pill status-${status}`}>{status}</span>
+            </span>
           </div>
           {activeFile ? (
             <CodeMirror
               value={content}
               height="100%"
-              extensions={markdownExtensions}
+              extensions={editorExtensions}
               onChange={handleEditorChange}
+              onCreateEditor={(view) => {
+                editorViewRef.current = view;
+              }}
               basicSetup={{
                 foldGutter: false,
                 highlightActiveLine: true,
@@ -419,7 +610,7 @@ export default function App() {
           )}
         </section>
 
-        <section className="preview-pane">
+        <section className="preview-pane" ref={previewRef}>
           <div className="pane-title">Preview</div>
           <MarkdownPreview markdown={content} />
         </section>
@@ -427,7 +618,10 @@ export default function App() {
 
       <TerminalPanel workspaceRoot={workspace?.root ?? null} />
 
-      <footer className="statusbar">{message}</footer>
+      <footer className="statusbar">
+        <span>{message}</span>
+        <span className="statusbar-hints">⌘O 열기 · ⌘N 새 파일 · ⌘S 저장 · ⌘B/I/K 서식</span>
+      </footer>
     </main>
   );
 }
@@ -526,8 +720,9 @@ function MermaidDiagram({ chart }: { chart: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    mermaid
-      .render(id, chart)
+    setSvg("<em>Mermaid diagram loading...</em>");
+    loadMermaid()
+      .then((mermaid) => mermaid.render(id, chart))
       .then(({ svg }) => {
         if (!cancelled) setSvg(svg);
       })

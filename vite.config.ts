@@ -9,6 +9,7 @@ export default defineConfig(async () => ({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.git/**", "**/.omx/**"],
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
