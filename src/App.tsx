@@ -67,6 +67,7 @@ const markdownExtensions = [
 const RECENT_LOCAL_EDIT_CONFLICT_WINDOW_MS = 15_000;
 const LAST_WORKSPACE_KEY = "maka:lastWorkspace";
 const LAYOUT_MODE_KEY = "maka:layoutMode";
+const TERMINAL_EXPANDED_KEY = "maka:terminalExpanded";
 
 let mermaidPromise: Promise<typeof import("mermaid").default> | null = null;
 
@@ -103,6 +104,10 @@ export default function App() {
     if (typeof window === "undefined") return "split";
     const saved = window.localStorage.getItem(LAYOUT_MODE_KEY);
     return isLayoutMode(saved) ? saved : "split";
+  });
+  const [terminalExpanded, setTerminalExpandedState] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(TERMINAL_EXPANDED_KEY) !== "false";
   });
   const saveTimer = useRef<number | null>(null);
   const lastLocalEditAt = useRef<number | null>(null);
@@ -145,6 +150,11 @@ export default function App() {
   const setLayoutMode = useCallback((next: LayoutMode) => {
     setLayoutModeState(next);
     window.localStorage.setItem(LAYOUT_MODE_KEY, next);
+  }, []);
+
+  const setTerminalExpanded = useCallback((expanded: boolean) => {
+    setTerminalExpandedState(expanded);
+    window.localStorage.setItem(TERMINAL_EXPANDED_KEY, String(expanded));
   }, []);
 
   const resetOpenFileState = useCallback(() => {
@@ -484,7 +494,7 @@ export default function App() {
   }, [activeFile, content, lastSavedHash, lastWrittenHash, refreshFiles, status]);
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${terminalExpanded ? "" : "terminal-collapsed"}`}>
       <header className="topbar">
         <div>
           <h1>Maka</h1>
@@ -632,7 +642,11 @@ export default function App() {
         </section>
       </section>
 
-      <TerminalPanel workspaceRoot={workspace?.root ?? null} />
+      <TerminalPanel
+        workspaceRoot={workspace?.root ?? null}
+        expanded={terminalExpanded}
+        onExpandedChange={setTerminalExpanded}
+      />
 
       <footer className="statusbar">
         <span>{message}</span>
@@ -753,7 +767,15 @@ function MermaidDiagram({ chart }: { chart: string }) {
   return <div className="mermaid-block" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
-function TerminalPanel({ workspaceRoot }: { workspaceRoot: string | null }) {
+function TerminalPanel({
+  workspaceRoot,
+  expanded,
+  onExpandedChange,
+}: {
+  workspaceRoot: string | null;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -782,7 +804,7 @@ function TerminalPanel({ workspaceRoot }: { workspaceRoot: string | null }) {
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(containerRef.current);
-    fit.fit();
+    safeFit(fit, containerRef.current);
     terminalRef.current = terminal;
     fitRef.current = fit;
     setTerminalStatus("starting");
@@ -823,7 +845,9 @@ function TerminalPanel({ workspaceRoot }: { workspaceRoot: string | null }) {
       }
     });
     const resizeObserver = new ResizeObserver(() => {
-      fit.fit();
+      if (containerRef.current) {
+        safeFit(fit, containerRef.current);
+      }
     });
     resizeObserver.observe(containerRef.current);
 
@@ -841,12 +865,20 @@ function TerminalPanel({ workspaceRoot }: { workspaceRoot: string | null }) {
     };
   }, [enabled, workspaceRoot]);
 
+  useEffect(() => {
+    if (!expanded || !containerRef.current) return;
+    safeFit(fitRef.current, containerRef.current);
+  }, [expanded]);
+
   return (
-    <section className="terminal-pane">
+    <section className={`terminal-pane ${expanded ? "" : "terminal-pane-collapsed"}`}>
       <div className="pane-title">
         <span>Terminal</span>
         <span className="terminal-actions">
           <span>{terminalStatus}</span>
+          <button onClick={() => onExpandedChange(!expanded)}>
+            {expanded ? "접기" : "펼치기"}
+          </button>
           {enabled ? (
             <button onClick={() => setEnabled(false)}>터미널 중지</button>
           ) : (
@@ -865,6 +897,11 @@ function TerminalPanel({ workspaceRoot }: { workspaceRoot: string | null }) {
       </div>
     </section>
   );
+}
+
+function safeFit(fit: FitAddon | null, container: HTMLElement) {
+  if (!fit || container.clientWidth <= 0 || container.clientHeight <= 0) return;
+  fit.fit();
 }
 
 function escapeHtml(value: string) {

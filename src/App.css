@@ -54,6 +54,10 @@ button:disabled {
   overflow: hidden;
 }
 
+.app-shell.terminal-collapsed {
+  grid-template-rows: 58px auto 34px 28px;
+}
+
 .topbar,
 .statusbar,
 .pane-title {
@@ -252,6 +256,10 @@ button:disabled {
 
 .terminal-pane {
   border-bottom: 1px solid var(--line);
+}
+
+.terminal-pane-collapsed .terminal-container {
+  display: none;
 }
 
 .terminal-container {
