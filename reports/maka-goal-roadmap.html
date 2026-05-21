@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Maka 목표 및 남은 단계 보고서</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111c33;
+      --panel-2: #17243e;
+      --paper: #f8fafc;
+      --ink: #172033;
+      --muted: #64748b;
+      --line: #dbe4ee;
+      --accent: #1f8a70;
+      --accent-2: #2563eb;
+      --done: #16a34a;
+      --doing: #ca8a04;
+      --todo: #64748b;
+      --risk: #dc2626;
+      --soft-green: #e9f8ef;
+      --soft-blue: #eaf2ff;
+      --soft-yellow: #fff7df;
+      --soft-red: #fff0f0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(31, 138, 112, 0.26), transparent 32rem),
+        radial-gradient(circle at top right, rgba(37, 99, 235, 0.22), transparent 34rem),
+        linear-gradient(180deg, #0f172a 0, #111827 18rem, #eef3f8 18rem, #eef3f8 100%);
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 40px 0 56px;
+    }
+
+    .hero {
+      color: white;
+      padding: 32px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 28px;
+      background: rgba(15, 23, 42, 0.58);
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+      backdrop-filter: blur(16px);
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: #a7f3d0;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 900px;
+      font-size: clamp(34px, 6vw, 64px);
+      line-height: 1.02;
+      letter-spacing: -0.055em;
+    }
+
+    .hero-summary {
+      max-width: 900px;
+      margin: 20px 0 0;
+      color: #dbeafe;
+      font-size: 18px;
+      line-height: 1.75;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 26px;
+    }
+
+    .meta-card {
+      min-height: 94px;
+      padding: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .meta-card strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #ffffff;
+      font-size: 24px;
+      letter-spacing: -0.04em;
+    }
+
+    .meta-card span {
+      color: #cbd5e1;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .section {
+      margin-top: 22px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 14px 44px rgba(30, 41, 59, 0.08);
+    }
+
+    .section h2 {
+      margin: 0 0 12px;
+      font-size: 26px;
+      letter-spacing: -0.035em;
+    }
+
+    .section p {
+      margin: 0;
+      color: #334155;
+      line-height: 1.72;
+    }
+
+    .goal-box {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .goal-statement {
+      padding: 24px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, var(--soft-green), #ffffff);
+      border: 1px solid #b7e4c7;
+    }
+
+    .goal-statement h3,
+    .boundary-card h3,
+    .remaining-card h3 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .goal-statement .big {
+      margin: 0;
+      color: #064e3b;
+      font-size: 24px;
+      font-weight: 850;
+      line-height: 1.45;
+      letter-spacing: -0.03em;
+    }
+
+    .boundary-card {
+      padding: 24px;
+      border-radius: 20px;
+      background: var(--soft-blue);
+      border: 1px solid #bed3ff;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 20px;
+      color: #334155;
+      line-height: 1.72;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 750;
+      border: 1px solid var(--line);
+      background: white;
+    }
+
+    .pill.done { color: #166534; background: #ecfdf3; border-color: #bbf7d0; }
+    .pill.doing { color: #854d0e; background: #fffbeb; border-color: #fde68a; }
+    .pill.todo { color: #475569; background: #f8fafc; border-color: #cbd5e1; }
+
+    .progress-wrap {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .progress-bar {
+      height: 18px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e2e8f0;
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+    }
+
+    .progress-fill {
+      width: 60%;
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+
+    .progress-label {
+      color: #334155;
+      font-weight: 800;
+      line-height: 1.5;
+    }
+
+    .progress-label strong {
+      display: block;
+      color: #0f172a;
+      font-size: 34px;
+      letter-spacing: -0.05em;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .mini-card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: white;
+    }
+
+    .mini-card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    .mini-card p {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .timeline {
+      position: relative;
+      margin-top: 18px;
+      padding-left: 18px;
+    }
+
+    .timeline::before {
+      content: "";
+      position: absolute;
+      top: 10px;
+      bottom: 10px;
+      left: 18px;
+      width: 2px;
+      background: #cbd5e1;
+    }
+
+    .step {
+      position: relative;
+      display: grid;
+      grid-template-columns: 36px 150px 1fr 120px;
+      gap: 14px;
+      align-items: start;
+      margin-bottom: 12px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: white;
+    }
+
+    .dot {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 999px;
+      color: white;
+      font-weight: 850;
+    }
+
+    .dot.done { background: var(--done); }
+    .dot.doing { background: var(--doing); }
+    .dot.todo { background: var(--todo); }
+
+    .step-kicker {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .step h3 {
+      margin: 2px 0 8px;
+      font-size: 17px;
+      letter-spacing: -0.02em;
+    }
+
+    .step p {
+      color: #475569;
+      font-size: 14px;
+    }
+
+    .status-badge {
+      justify-self: end;
+      padding: 6px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .status-badge.done { color: #166534; background: #dcfce7; }
+    .status-badge.doing { color: #854d0e; background: #fef3c7; }
+    .status-badge.todo { color: #475569; background: #f1f5f9; }
+
+    .remaining-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .remaining-card {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #ffffff;
+    }
+
+    .remaining-card.priority-1 { border-color: #86efac; background: #f0fdf4; }
+    .remaining-card.priority-2 { border-color: #bfdbfe; background: #eff6ff; }
+    .remaining-card.priority-3 { border-color: #fde68a; background: #fffbeb; }
+    .remaining-card.priority-4 { border-color: #fecaca; background: #fff7f7; }
+
+    .remaining-card .num {
+      display: inline-grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      color: white;
+      background: #0f172a;
+      font-weight: 850;
+    }
+
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .check {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 12px;
+      border-radius: 14px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #334155;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .check::before {
+      content: "✓";
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      color: white;
+      background: var(--done);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .risk-list {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .risk {
+      padding: 16px;
+      border: 1px solid #fecaca;
+      border-radius: 16px;
+      background: var(--soft-red);
+    }
+
+    .risk h3 {
+      margin: 0 0 8px;
+      color: #991b1b;
+      font-size: 15px;
+    }
+
+    .risk p { font-size: 14px; color: #7f1d1d; }
+
+    .footer {
+      margin-top: 22px;
+      color: #475569;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: #e2e8f0;
+      color: #0f172a;
+      font-family: "SFMono-Regular", "SF Mono", Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    @media print {
+      body { background: white; }
+      .page { width: 100%; padding: 0; }
+      .hero { color: var(--ink); background: white; box-shadow: none; }
+      .hero-summary, .meta-card span, .eyebrow { color: var(--muted); }
+      .meta-card strong { color: var(--ink); }
+      .section { box-shadow: none; break-inside: avoid; }
+    }
+
+    @media (max-width: 920px) {
+      .meta-grid,
+      .cards,
+      .risk-list,
+      .remaining-grid,
+      .checklist,
+      .goal-box,
+      .progress-wrap {
+        grid-template-columns: 1fr;
+      }
+
+      .step {
+        grid-template-columns: 36px 1fr;
+      }
+
+      .status-badge {
+        justify-self: start;
+        grid-column: 2;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <p class="eyebrow">Maka Roadmap Report · 2026-05-22</p>
+      <h1>Typora 감성 + VS Code식 로컬 작업성을 가진 Markdown 데스크톱 앱</h1>
+      <p class="hero-summary">
+        우리의 목표는 브라우저 데모가 아니라, 실제 로컬 폴더를 열고 Markdown 파일을 안전하게 편집하며,
+        자동저장·외부 변경 감지·충돌 선택지·Mermaid 미리보기·workspace 기준 터미널까지 제공하는
+        Tauri 기반 데스크톱 에디터를 만드는 것이다.
+      </p>
+      <div class="meta-grid">
+        <div class="meta-card"><strong>6 / 10</strong><span>v1 실사용 목표 기준 완료 단계</span></div>
+        <div class="meta-card"><strong>4단계</strong><span>v1이라고 부르기 전 남은 핵심 단계</span></div>
+        <div class="meta-card"><strong>MVP+</strong><span>현재 상태: 핵심 기능 구현 + 1차 사용성 개선 완료</span></div>
+        <div class="meta-card"><strong>bc8bbb1</strong><span>최신 푸시 커밋: 작업 컨텍스트 기억</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>1. 우리의 최종 목표</h2>
+      <div class="goal-box">
+        <div class="goal-statement">
+          <h3>목표 문장</h3>
+          <p class="big">
+            Maka는 “로컬 문서 작업용 Markdown IDE”다. Typora처럼 문서 작성에 집중할 수 있고,
+            VS Code처럼 실제 폴더와 터미널을 다루며, 외부 편집과 자동저장 사이에서 사용자의 데이터를 잃지 않는다.
+          </p>
+          <div class="pill-row">
+            <span class="pill done">Tauri</span>
+            <span class="pill done">React/TypeScript</span>
+            <span class="pill done">Local folder</span>
+            <span class="pill done">Markdown + Mermaid</span>
+            <span class="pill done">Integrated terminal</span>
+            <span class="pill doing">v1 polish 진행 중</span>
+          </div>
+        </div>
+        <div class="boundary-card">
+          <h3>v1에서 일부러 뺀 것</h3>
+          <ul>
+            <li>완전한 Typora식 inline WYSIWYG</li>
+            <li>테마 커스터마이징</li>
+            <li>고급 표 편집</li>
+            <li>다중 탭</li>
+            <li>Outline/sidebar</li>
+            <li>PDF/export polish</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>2. 현재 진행률</h2>
+      <div class="progress-wrap">
+        <div>
+          <div class="progress-bar"><div class="progress-fill"></div></div>
+          <p style="margin-top: 12px;">
+            핵심 MVP는 이미 동작한다. 이제 남은 것은 “앱처럼 매일 쓰기 좋은 수준”으로 만드는 안정화와 UX polish다.
+          </p>
+        </div>
+        <div class="progress-label">
+          <strong>60%</strong>
+          v1 실사용 목표 기준. MVP acceptance는 대부분 통과했고, release/UX polish가 남았다.
+        </div>
+      </div>
+      <div class="cards">
+        <div class="mini-card">
+          <h3>이미 가능</h3>
+          <p>폴더 열기, Markdown 파일 탐색/편집/저장, preview, Mermaid, autosave, external reload/conflict, terminal.</p>
+        </div>
+        <div class="mini-card">
+          <h3>방금 추가</h3>
+          <p>마지막 workspace 복원, Cmd+O/Cmd+S, 편집/미리보기 layout 토글, heavy folder ignore.</p>
+        </div>
+        <div class="mini-card">
+          <h3>아직 부족</h3>
+          <p>파일 생성/rename, preview scroll sync, terminal panel polish, release packaging/documentation.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>3. 전체 단계표</h2>
+      <p>v1 실사용 가능 상태까지 총 10단계로 나누면 현재 6단계까지 완료된 상태다.</p>
+      <div class="timeline">
+        <article class="step">
+          <div class="dot done">1</div>
+          <div><div class="step-kicker">Done</div><h3>제품 범위 확정</h3></div>
+          <p>Tauri + React/TypeScript, source editor + live preview, local folder, terminal, Mermaid, 충돌 배너로 범위 확정.</p>
+          <span class="status-badge done">완료</span>
+        </article>
+        <article class="step">
+          <div class="dot done">2</div>
+          <div><div class="step-kicker">Done</div><h3>데스크톱 앱 골격</h3></div>
+          <p>Tauri 앱, React UI, 좌측 파일 목록, 중앙 editor, 우측 preview, 하단 terminal panel 구성.</p>
+          <span class="status-badge done">완료</span>
+        </article>
+        <article class="step">
+          <div class="dot done">3</div>
+          <div><div class="step-kicker">Done</div><h3>로컬 파일 MVP</h3></div>
+          <p>workspace root 기준 파일 list/read/write, safe path join, Markdown 확장자 처리, GitHub public remote push.</p>
+          <span class="status-badge done">완료</span>
+        </article>
+        <article class="step">
+          <div class="dot done">4</div>
+          <div><div class="step-kicker">Done</div><h3>저장/감시/충돌</h3></div>
+          <p>autosave, own-write suppression, external reload, dirty buffer conflict banner, 로컬/외부 선택지.</p>
+          <span class="status-badge done">완료</span>
+        </article>
+        <article class="step">
+          <div class="dot done">5</div>
+          <div><div class="step-kicker">Done</div><h3>Mermaid + 터미널</h3></div>
+          <p>Mermaid fenced block preview, xterm UI, Rust PTY backend, workspace 기준 shell, 수동 시작/중지.</p>
+          <span class="status-badge done">완료</span>
+        </article>
+        <article class="step">
+          <div class="dot done">6</div>
+          <div><div class="step-kicker">Done</div><h3>1차 사용성 개선</h3></div>
+          <p>마지막 workspace 자동 복원, Cmd+O/Cmd+S, layout toggle, heavy/generated dir ignore.</p>
+          <span class="status-badge done">완료</span>
+        </article>
+        <article class="step">
+          <div class="dot doing">7</div>
+          <div><div class="step-kicker">Next</div><h3>파일 작업 UX</h3></div>
+          <p>새 Markdown 파일 만들기, 파일 rename, 안전한 삭제/이동 정책, 현재 파일이 외부 삭제된 경우 UX 강화.</p>
+          <span class="status-badge doing">다음</span>
+        </article>
+        <article class="step">
+          <div class="dot todo">8</div>
+          <div><div class="step-kicker">Todo</div><h3>작성 UX polish</h3></div>
+          <p>editor → preview scroll sync, Markdown toolbar/단축키, 저장 상태/최근 저장 시각, preview-only flow 개선.</p>
+          <span class="status-badge todo">남음</span>
+        </article>
+        <article class="step">
+          <div class="dot todo">9</div>
+          <div><div class="step-kicker">Todo</div><h3>성능/안정성</h3></div>
+          <p>Mermaid lazy loading, watcher debounce, 대형 workspace 경고, terminal resize/종료 lifecycle hardening.</p>
+          <span class="status-badge todo">남음</span>
+        </article>
+        <article class="step">
+          <div class="dot todo">10</div>
+          <div><div class="step-kicker">Todo</div><h3>배포 준비</h3></div>
+          <p>앱 아이콘, DMG/release artifact, README 사용법, 수동 GUI smoke checklist, 필요 시 signing/notarization.</p>
+          <span class="status-badge todo">남음</span>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>4. 남은 핵심 4단계</h2>
+      <p>“내가 실제로 문서 작업에 계속 쓸 수 있겠다”까지 가기 위한 남은 묶음이다.</p>
+      <div class="remaining-grid">
+        <article class="remaining-card priority-1">
+          <div class="num">1</div>
+          <h3>파일 작업 UX 완성</h3>
+          <ul>
+            <li>새 Markdown 파일 만들기</li>
+            <li>파일 이름 변경</li>
+            <li>삭제는 confirm 포함</li>
+            <li>외부 삭제/rename 처리 강화</li>
+          </ul>
+        </article>
+        <article class="remaining-card priority-2">
+          <div class="num">2</div>
+          <h3>작성 경험 polish</h3>
+          <ul>
+            <li>editor → preview scroll sync</li>
+            <li>기본 Markdown toolbar</li>
+            <li>Bold/Italic/Code/Link shortcut</li>
+            <li>저장 상태와 최근 저장 시각 표시</li>
+          </ul>
+        </article>
+        <article class="remaining-card priority-3">
+          <div class="num">3</div>
+          <h3>성능/안정성 hardening</h3>
+          <ul>
+            <li>Mermaid dynamic import</li>
+            <li>watcher debounce</li>
+            <li>대형 workspace 경고</li>
+            <li>terminal resize/cleanup smoke</li>
+          </ul>
+        </article>
+        <article class="remaining-card priority-4">
+          <div class="num">4</div>
+          <h3>배포/문서화</h3>
+          <ul>
+            <li>앱 아이콘</li>
+            <li>macOS app/DMG release</li>
+            <li>README에 사용법/한계 명시</li>
+            <li>최종 manual acceptance run</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>5. 현재 완료 증거</h2>
+      <div class="checklist">
+        <div class="check">공개 GitHub remote push 완료: <code>github.com/ChangJunPark/maka</code></div>
+        <div class="check">최신 커밋: <code>bc8bbb1</code> 작업 컨텍스트 기억</div>
+        <div class="check">TypeScript 검증: <code>pnpm lint</code> 통과</div>
+        <div class="check">Frontend unit: <code>pnpm test</code> 10 tests 통과</div>
+        <div class="check">Rust unit: <code>cargo test</code> 6 tests 통과</div>
+        <div class="check">Desktop bundle: <code>pnpm tauri build</code> 통과, <code>Maka.app</code> 생성</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>6. 주요 리스크</h2>
+      <div class="risk-list">
+        <article class="risk">
+          <h3>실제 GUI 재시작 smoke</h3>
+          <p>마지막 workspace 복원은 build 검증은 됐지만, 커밋 이후 실제 앱 재시작 수동 확인은 다음 라운드에서 해야 한다.</p>
+        </article>
+        <article class="risk">
+          <h3>Mermaid bundle 크기</h3>
+          <p>현재 build는 통과하지만 Mermaid 관련 chunk warning이 있다. lazy import로 초기 로딩을 줄이는 것이 좋다.</p>
+        </article>
+        <article class="risk">
+          <h3>Watcher edge case</h3>
+          <p>atomic save, rename, delete, 대형 workspace 이벤트는 더 많은 실제 폴더 smoke와 debounce가 필요하다.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>7. 추천 다음 액션</h2>
+      <p>
+        다음 작업은 <strong>파일 작업 UX 완성</strong>으로 잡는 것이 가장 좋다. 지금 앱은 열고 쓰는 것은 되지만,
+        새 문서를 만들거나 이름을 바꾸는 흐름이 아직 약하다. 즉, 다음 커밋 목표는
+        <code>새 Markdown 파일 만들기 + rename + 간단 GUI smoke</code>가 가장 효율적이다.
+      </p>
+    </section>
+
+    <p class="footer">
+      Generated from Maka planning artifacts and current repository state. Report file: <code>reports/maka-goal-roadmap.html</code>
+    </p>
+  </main>
+</body>
+</html>
