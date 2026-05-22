@@ -52,6 +52,14 @@ Run the desktop app:
 pnpm tauri dev
 ```
 
+Prepare a deterministic smoke-test workspace:
+
+```bash
+pnpm smoke:workspace
+```
+
+This prints the workspace path, normally `/tmp/maka-smoke-workspace`.
+
 Build the macOS app bundle:
 
 ```bash
@@ -64,21 +72,36 @@ The macOS bundle is created at:
 src-tauri/target/release/bundle/macos/Maka.app
 ```
 
+Open the latest release bundle directly:
+
+```bash
+pnpm app:open-release
+```
+
+If an older DMG-mounted Maka is already running from `/Volumes/.../Maka.app`, close it first or run:
+
+```bash
+MAKA_KILL_STALE=1 pnpm app:open-release
+```
+
+This avoids macOS LaunchServices reactivating an old app while testing the latest build.
+
 ## Manual Smoke Checklist
 
-Use a temporary workspace folder with at least two Markdown files.
+Use the deterministic smoke workspace unless testing a specific user folder.
 
-1. Launch `pnpm tauri dev`.
-2. Open the temp workspace folder.
-3. Confirm the file tree lists Markdown files and skips ignored folders.
-4. Create a new Markdown file with the `+` button or `Cmd+N`.
-5. Rename the new file and confirm it remains open.
-6. Edit the file and confirm autosave writes to disk.
-7. Press `Cmd+S` and confirm the status returns to clean.
-8. Modify a clean file externally and confirm Maka reloads it.
-9. Modify a dirty file externally and confirm the conflict banner appears.
-10. Render a Mermaid fenced block in preview.
-11. Scroll the editor and confirm preview follows roughly the same position.
-12. Start the terminal and run `pwd`; confirm it is rooted at the workspace.
-13. Delete a test file from Maka and confirm it disappears from the tree.
-14. Restart the app and confirm the last workspace is restored.
+1. Run `pnpm smoke:workspace` and note the printed path.
+2. Launch `pnpm tauri dev` for development or `pnpm app:open-release` for the latest built bundle.
+3. Open `/tmp/maka-smoke-workspace` or the printed workspace path.
+4. Confirm the file tree lists `README.md`, `diagrams/flow.md`, and `notes/todo.md`, while skipping ignored `node_modules` and `target` Markdown files.
+5. Create a new Markdown file with the `+` button, empty-state action, or `Cmd+N`.
+6. Rename the new file and confirm it remains open.
+7. Edit the file and confirm autosave writes to disk.
+8. Press `Cmd+S` and confirm the status returns to clean.
+9. Modify a clean file externally and confirm Maka reloads it.
+10. Modify a dirty file externally and confirm the conflict banner appears.
+11. Render a Mermaid fenced block in preview.
+12. Scroll the editor and confirm preview follows roughly the same position.
+13. Start the terminal and run `pwd`; confirm it is rooted at the workspace.
+14. Delete a test file from Maka and confirm it disappears from the tree.
+15. Restart the app and confirm the last workspace is restored.

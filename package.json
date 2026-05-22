@@ -10,7 +10,10 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "smoke:workspace": "node scripts/prepare-smoke-workspace.mjs --reset",
+    "app:build": "pnpm tauri build",
+    "app:open-release": "scripts/open-release-app.sh"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.0",
