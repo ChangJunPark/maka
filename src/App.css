@@ -500,6 +500,35 @@ button:disabled {
   justify-content: center;
 }
 
+.empty-state {
+  display: grid;
+  gap: 8px;
+  max-width: 320px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.file-pane > .empty-state {
+  margin: 18px 14px;
+}
+
+.preview-scroll > .empty-state {
+  height: 100%;
+  margin: 0 auto;
+  place-content: center;
+  text-align: center;
+}
+
+.empty-state strong {
+  color: #304153;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.empty-state span {
+  font-size: 13px;
+}
+
 .file-actions,
 .editor-actions {
   display: inline-flex;

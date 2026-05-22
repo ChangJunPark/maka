@@ -614,7 +614,10 @@ export default function App() {
               onOpen={(path) => void readActiveFile(path)}
             />
           ) : (
-            <p className="empty">폴더를 열면 Markdown 파일이 표시됩니다.</p>
+            <EmptyState
+              title="Workspace를 열어주세요"
+              description="로컬 폴더를 선택하면 Markdown 파일을 탐색하고 편집할 수 있습니다."
+            />
           )}
         </aside>
 
@@ -673,7 +676,14 @@ export default function App() {
             />
           ) : (
             <div className="empty editor-empty">
-              {markdownFiles.length ? "파일을 선택하세요." : "열린 Markdown 파일이 없습니다."}
+              <EmptyState
+                title={markdownFiles.length ? "파일을 선택하세요" : "열린 Markdown 파일이 없습니다"}
+                description={
+                  markdownFiles.length
+                    ? "왼쪽 목록에서 Markdown 파일을 선택하면 여기서 바로 쓸 수 있습니다."
+                    : "새 파일을 만들거나 Markdown이 있는 폴더를 열어 작업을 시작하세요."
+                }
+              />
             </div>
           )}
         </section>
@@ -681,7 +691,14 @@ export default function App() {
         <section className="preview-pane">
           <div className="pane-title">Preview</div>
           <div className="preview-scroll" ref={previewRef}>
-            <MarkdownPreview markdown={content} />
+            {activeFile ? (
+              <MarkdownPreview markdown={content} />
+            ) : (
+              <EmptyState
+                title="미리볼 문서가 없습니다"
+                description="파일을 열면 Markdown preview와 Mermaid diagram이 여기에 표시됩니다."
+              />
+            )}
           </div>
         </section>
       </section>
@@ -759,6 +776,15 @@ function FileList({
         </li>
       ))}
     </ul>
+  );
+}
+
+function EmptyState({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="empty-state">
+      <strong>{title}</strong>
+      <span>{description}</span>
+    </div>
   );
 }
 
