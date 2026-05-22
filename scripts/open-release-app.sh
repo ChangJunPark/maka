@@ -8,9 +8,12 @@ if [[ "${MAKA_KILL_STALE:-0}" == "1" ]]; then
   pkill -f '/Volumes/.*/Maka.app/Contents/MacOS/maka' 2>/dev/null || true
 fi
 
-if [[ ! -d "$APP_PATH" ]]; then
-  echo "Maka.app이 없습니다. 먼저 release bundle을 빌드합니다..." >&2
+if [[ "${MAKA_SKIP_BUILD:-0}" != "1" ]]; then
+  echo "최신 release bundle을 빌드합니다..." >&2
   (cd "$ROOT" && pnpm tauri build)
+elif [[ ! -d "$APP_PATH" ]]; then
+  echo "Maka.app이 없습니다. MAKA_SKIP_BUILD=1 없이 다시 실행하세요." >&2
+  exit 1
 fi
 
 if pgrep -f '/Volumes/.*/Maka.app/Contents/MacOS/maka' >/dev/null 2>&1; then
@@ -21,6 +24,11 @@ if pgrep -f '/Volumes/.*/Maka.app/Contents/MacOS/maka' >/dev/null 2>&1; then
   MAKA_KILL_STALE=1 pnpm app:open-release
 
 WARN
+fi
+
+if [[ "${MAKA_SKIP_OPEN:-0}" == "1" ]]; then
+  echo "ready: $APP_PATH"
+  exit 0
 fi
 
 open -n "$APP_PATH"

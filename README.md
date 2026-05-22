@@ -72,10 +72,16 @@ The macOS bundle is created at:
 src-tauri/target/release/bundle/macos/Maka.app
 ```
 
-Open the latest release bundle directly:
+Build and open the latest release bundle directly:
 
 ```bash
 pnpm app:open-release
+```
+
+`pnpm app:open-release` rebuilds the release bundle before opening it so the app you see matches the current checkout. If you intentionally want to open the already-built bundle without rebuilding:
+
+```bash
+MAKA_SKIP_BUILD=1 pnpm app:open-release
 ```
 
 If an older DMG-mounted Maka is already running from `/Volumes/.../Maka.app`, close it first or run:
