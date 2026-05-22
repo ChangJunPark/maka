@@ -529,6 +529,20 @@ button:disabled {
   font-size: 13px;
 }
 
+.empty-state-action {
+  justify-self: start;
+  margin-top: 4px;
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.preview-scroll > .empty-state .empty-state-action,
+.editor-empty .empty-state-action {
+  justify-self: center;
+}
+
 .file-actions,
 .editor-actions {
   display: inline-flex;
