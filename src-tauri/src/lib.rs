@@ -98,10 +98,7 @@ fn list_files(state: State<AppState>) -> Result<Vec<FileEntry>, String> {
 #[tauri::command]
 fn read_file(relative_path: String, state: State<AppState>) -> Result<FilePayload, String> {
     let root = workspace_root(&state)?;
-    let path = safe_join(&root, &relative_path)?;
-    let content = fs::read_to_string(&path)
-        .map_err(|err| format!("failed to read {relative_path}: {err}"))?;
-    Ok(file_payload(relative_path, content, &path)?)
+    read_workspace_file(&root, &relative_path)
 }
 
 #[tauri::command]
@@ -111,22 +108,13 @@ fn write_file(
     state: State<AppState>,
 ) -> Result<FilePayload, String> {
     let root = workspace_root(&state)?;
-    let path = safe_join(&root, &relative_path)?;
-    fs::write(&path, &content).map_err(|err| format!("failed to write {relative_path}: {err}"))?;
-    Ok(file_payload(relative_path, content, &path)?)
+    write_workspace_file(&root, &relative_path, &content)
 }
 
 #[tauri::command]
 fn create_file(relative_path: String, state: State<AppState>) -> Result<FilePayload, String> {
     let root = workspace_root(&state)?;
-    let relative_path = markdown_relative_path(&relative_path)?;
-    let path = safe_join_for_new_file(&root, &relative_path)?;
-    if path.exists() {
-        return Err(format!("file already exists: {relative_path}"));
-    }
-    let content = default_markdown_content(&relative_path);
-    fs::write(&path, &content).map_err(|err| format!("failed to create {relative_path}: {err}"))?;
-    Ok(file_payload(relative_path, content, &path)?)
+    create_workspace_file(&root, &relative_path)
 }
 
 #[tauri::command]
@@ -136,30 +124,13 @@ fn rename_file(
     state: State<AppState>,
 ) -> Result<FilePayload, String> {
     let root = workspace_root(&state)?;
-    let old_path = safe_join(&root, &old_relative_path)?;
-    if !old_path.is_file() {
-        return Err(format!("file does not exist: {old_relative_path}"));
-    }
-    let new_relative_path = markdown_relative_path(&new_relative_path)?;
-    let new_path = safe_join_for_new_file(&root, &new_relative_path)?;
-    if new_path.exists() {
-        return Err(format!("file already exists: {new_relative_path}"));
-    }
-    fs::rename(&old_path, &new_path)
-        .map_err(|err| format!("failed to rename {old_relative_path}: {err}"))?;
-    let content = fs::read_to_string(&new_path)
-        .map_err(|err| format!("failed to read {new_relative_path}: {err}"))?;
-    Ok(file_payload(new_relative_path, content, &new_path)?)
+    rename_workspace_file(&root, &old_relative_path, &new_relative_path)
 }
 
 #[tauri::command]
 fn delete_file(relative_path: String, state: State<AppState>) -> Result<(), String> {
     let root = workspace_root(&state)?;
-    let path = safe_join(&root, &relative_path)?;
-    if !path.is_file() {
-        return Err(format!("file does not exist: {relative_path}"));
-    }
-    fs::remove_file(&path).map_err(|err| format!("failed to delete {relative_path}: {err}"))
+    delete_workspace_file(&root, &relative_path)
 }
 
 #[tauri::command]
@@ -421,6 +392,83 @@ fn markdown_relative_path(input: &str) -> Result<String, String> {
     Ok(relative.to_string_lossy().to_string())
 }
 
+fn validate_managed_markdown_path(relative_path: &str) -> Result<(), String> {
+    let relative = Path::new(relative_path);
+    validate_relative_path(relative)?;
+    if !is_markdown_file(relative) {
+        return Err("only Markdown files (.md, .markdown, .mdx) can be managed here".to_string());
+    }
+    if has_ignored_component(relative) {
+        return Err("file path uses an ignored directory".to_string());
+    }
+    Ok(())
+}
+
+fn read_workspace_file(root: &Path, relative_path: &str) -> Result<FilePayload, String> {
+    validate_managed_markdown_path(relative_path)?;
+    let path = safe_join(root, relative_path)?;
+    let content = fs::read_to_string(&path)
+        .map_err(|err| format!("failed to read {relative_path}: {err}"))?;
+    Ok(file_payload(relative_path.to_string(), content, &path)?)
+}
+
+fn write_workspace_file(
+    root: &Path,
+    relative_path: &str,
+    content: &str,
+) -> Result<FilePayload, String> {
+    validate_managed_markdown_path(relative_path)?;
+    let path = safe_join(root, relative_path)?;
+    fs::write(&path, content).map_err(|err| format!("failed to write {relative_path}: {err}"))?;
+    Ok(file_payload(
+        relative_path.to_string(),
+        content.to_string(),
+        &path,
+    )?)
+}
+
+fn create_workspace_file(root: &Path, relative_path: &str) -> Result<FilePayload, String> {
+    let relative_path = markdown_relative_path(relative_path)?;
+    let path = safe_join_for_new_file(root, &relative_path)?;
+    if path.exists() {
+        return Err(format!("file already exists: {relative_path}"));
+    }
+    let content = default_markdown_content(&relative_path);
+    fs::write(&path, &content).map_err(|err| format!("failed to create {relative_path}: {err}"))?;
+    Ok(file_payload(relative_path, content, &path)?)
+}
+
+fn rename_workspace_file(
+    root: &Path,
+    old_relative_path: &str,
+    new_relative_path: &str,
+) -> Result<FilePayload, String> {
+    validate_managed_markdown_path(old_relative_path)?;
+    let old_path = safe_join(root, old_relative_path)?;
+    if !old_path.is_file() {
+        return Err(format!("file does not exist: {old_relative_path}"));
+    }
+    let new_relative_path = markdown_relative_path(new_relative_path)?;
+    let new_path = safe_join_for_new_file(root, &new_relative_path)?;
+    if new_path.exists() {
+        return Err(format!("file already exists: {new_relative_path}"));
+    }
+    fs::rename(&old_path, &new_path)
+        .map_err(|err| format!("failed to rename {old_relative_path}: {err}"))?;
+    let content = fs::read_to_string(&new_path)
+        .map_err(|err| format!("failed to read {new_relative_path}: {err}"))?;
+    Ok(file_payload(new_relative_path, content, &new_path)?)
+}
+
+fn delete_workspace_file(root: &Path, relative_path: &str) -> Result<(), String> {
+    validate_managed_markdown_path(relative_path)?;
+    let path = safe_join(root, relative_path)?;
+    if !path.is_file() {
+        return Err(format!("file does not exist: {relative_path}"));
+    }
+    fs::remove_file(&path).map_err(|err| format!("failed to delete {relative_path}: {err}"))
+}
+
 fn default_markdown_content(relative_path: &str) -> String {
     let stem = Path::new(relative_path)
         .file_stem()
@@ -629,6 +677,60 @@ mod tests {
         assert!(markdown_relative_path("../outside.md").is_err());
         assert!(markdown_relative_path("node_modules/skip.md").is_err());
         assert!(markdown_relative_path("script.js").is_err());
+    }
+
+    #[test]
+    fn managed_markdown_path_rejects_non_markdown_and_ignored_paths() {
+        assert!(validate_managed_markdown_path("notes/todo.md").is_ok());
+        assert!(validate_managed_markdown_path("notes/todo.txt").is_err());
+        assert!(validate_managed_markdown_path("node_modules/pkg/hidden.md").is_err());
+        assert!(validate_managed_markdown_path("../outside.md").is_err());
+    }
+
+    #[test]
+    fn workspace_file_helpers_cover_smoke_lifecycle() {
+        let temp_root = std::env::temp_dir().join(format!("maka-smoke-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&temp_root).unwrap();
+        let root = temp_root.canonicalize().unwrap();
+
+        let created = create_workspace_file(&root, "notes/todo").unwrap();
+        assert_eq!(created.relative_path, "notes/todo.md");
+        assert_eq!(created.content, "# todo\n");
+
+        let read = read_workspace_file(&root, "notes/todo.md").unwrap();
+        assert_eq!(read.hash, created.hash);
+        assert_eq!(read.content, "# todo\n");
+
+        let written = write_workspace_file(&root, "notes/todo.md", "# Todo\n\n- smoke\n").unwrap();
+        assert_eq!(written.relative_path, "notes/todo.md");
+        assert_eq!(written.content, "# Todo\n\n- smoke\n");
+        assert_ne!(written.hash, created.hash);
+
+        let renamed = rename_workspace_file(&root, "notes/todo.md", "notes/done").unwrap();
+        assert_eq!(renamed.relative_path, "notes/done.md");
+        assert!(read_workspace_file(&root, "notes/todo.md").is_err());
+        assert_eq!(renamed.content, "# Todo\n\n- smoke\n");
+
+        delete_workspace_file(&root, "notes/done.md").unwrap();
+        assert!(!root.join("notes/done.md").exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_file_helpers_reject_ignored_and_escaping_paths() {
+        let temp_root = std::env::temp_dir().join(format!("maka-boundary-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(temp_root.join("node_modules/pkg")).unwrap();
+        fs::write(temp_root.join("node_modules/pkg/hidden.md"), "# hidden").unwrap();
+        let root = temp_root.canonicalize().unwrap();
+
+        assert!(read_workspace_file(&root, "node_modules/pkg/hidden.md").is_err());
+        assert!(write_workspace_file(&root, "node_modules/pkg/hidden.md", "# nope").is_err());
+        assert!(create_workspace_file(&root, "../outside.md").is_err());
+        assert!(rename_workspace_file(&root, "node_modules/pkg/hidden.md", "visible.md").is_err());
+        assert!(delete_workspace_file(&root, "node_modules/pkg/hidden.md").is_err());
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
